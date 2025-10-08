@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: kube_credentials
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d kube_credentials"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  issuance:
+    build:
+      context: ./services/issuance
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DB_NAME=kube_credentials
+      - DB_PORT=5432
+      - RDS_CLUSTER_HOST=postgres
+      - RDS_CLUSTER_USERNAME=admin
+      - RDS_CLUSTER_PASSWORD=password123
+      - AWS_REGION=us-east-1
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  verification:
+    build:
+      context: ./services/verification
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DB_NAME=kube_credentials
+      - DB_PORT=5432
+      - RDS_CLUSTER_HOST=postgres
+      - RDS_CLUSTER_USERNAME=admin
+      - RDS_CLUSTER_PASSWORD=password123
+      - AWS_REGION=us-east-1
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

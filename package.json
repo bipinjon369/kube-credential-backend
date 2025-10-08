@@ -1,0 +1,20 @@
+{
+  "name": "kube-credential-backend",
+  "version": "1.0.0",
+  "description": "Kubernetes Credential Management Backend Services",
+  "private": true,
+  "workspaces": [
+    "services/issuance",
+    "services/verification"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "dev": "docker-compose up -d",
+    "clean": "npm run clean --workspaces"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}
