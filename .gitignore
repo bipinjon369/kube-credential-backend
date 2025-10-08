@@ -1,2 +1,5 @@
 dist/
 services/**/dist/
+services/**/node_modules/
+services/**/.env
+services/**/tsconfig.tsbuildinfo
