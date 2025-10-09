@@ -71,6 +71,85 @@
         }
       }
     },
+    "DBParameterGroup": {
+      "Type": "AWS::RDS::DBParameterGroup",
+      "Properties": {
+        "Description": "Parameter group for PostgreSQL to allow non-SSL connections",
+        "Family": "postgres15",
+        "Parameters": {
+          "rds.force_ssl": 0
+        }
+      }
+    },
+    "PostgreSQLDB": {
+      "Type": "AWS::RDS::DBInstance",
+      "Properties": {
+        "DBInstanceIdentifier": "kube-credential-backend-dev-postgres",
+        "DBInstanceClass": "db.t3.micro",
+        "Engine": "postgres",
+        "EngineVersion": "15",
+        "MasterUsername": "dbadmin",
+        "MasterUserPassword": "SimplePass123",
+        "AllocatedStorage": 20,
+        "StorageType": "gp2",
+        "DBName": "kube_credentials",
+        "DBParameterGroupName": {
+          "Ref": "DBParameterGroup"
+        },
+        "VPCSecurityGroups": [
+          {
+            "Ref": "RDSSecurityGroup"
+          }
+        ],
+        "DBSubnetGroupName": {
+          "Ref": "DBSubnetGroup"
+        },
+        "PubliclyAccessible": true,
+        "BackupRetentionPeriod": 7,
+        "MultiAZ": false,
+        "StorageEncrypted": true,
+        "DeletionProtection": false
+      }
+    },
+    "RDSSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Security group for RDS PostgreSQL",
+        "VpcId": {
+          "Ref": "VPC"
+        },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 5432,
+            "ToPort": 5432,
+            "SourceSecurityGroupId": {
+              "Ref": "ECSSecurityGroup"
+            }
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 5432,
+            "ToPort": 5432,
+            "CidrIp": "0.0.0.0/0"
+          }
+        ]
+      }
+    },
+    "DBSubnetGroup": {
+      "Type": "AWS::RDS::DBSubnetGroup",
+      "Properties": {
+        "DBSubnetGroupDescription": "Subnet group for RDS database",
+        "SubnetIds": [
+          {
+            "Ref": "PublicSubnet1"
+          },
+          {
+            "Ref": "PublicSubnet2"
+          }
+        ]
+      }
+    },
     "VPC": {
       "Type": "AWS::EC2::VPC",
       "Properties": {
@@ -80,7 +159,7 @@
         "Tags": [
           {
             "Key": "Name",
-            "Value": "kube-credential-ecs-vpc"
+            "Value": "kube-credential-backend-vpc"
           }
         ]
       }
@@ -192,7 +271,7 @@
     "ECSCluster": {
       "Type": "AWS::ECS::Cluster",
       "Properties": {
-        "ClusterName": "kube-credential-ecs-cluster",
+        "ClusterName": "kube-credential-backend-cluster",
         "CapacityProviders": [
           "FARGATE"
         ],
@@ -244,21 +323,21 @@
     "IssuanceLogGroup": {
       "Type": "AWS::Logs::LogGroup",
       "Properties": {
-        "LogGroupName": "/ecs/kube-credential-ecs-issuance",
+        "LogGroupName": "/ecs/kube-credential-backend-issuance",
         "RetentionInDays": 7
       }
     },
     "VerificationLogGroup": {
       "Type": "AWS::Logs::LogGroup",
       "Properties": {
-        "LogGroupName": "/ecs/kube-credential-ecs-verification",
+        "LogGroupName": "/ecs/kube-credential-backend-verification",
         "RetentionInDays": 7
       }
     },
     "IssuanceTaskDefinition": {
       "Type": "AWS::ECS::TaskDefinition",
       "Properties": {
-        "Family": "kube-credential-ecs-issuance",
+        "Family": "kube-credential-backend-issuance",
         "NetworkMode": "awsvpc",
         "RequiresCompatibilities": [
           "FARGATE"
@@ -293,6 +372,31 @@
               {
                 "Name": "AWS_REGION",
                 "Value": "us-east-1"
+              },
+              {
+                "Name": "DB_NAME",
+                "Value": "kube_credentials"
+              },
+              {
+                "Name": "DB_PORT",
+                "Value": "5432"
+              },
+              {
+                "Name": "RDS_CLUSTER_HOST",
+                "Value": {
+                  "Fn::GetAtt": [
+                    "PostgreSQLDB",
+                    "Endpoint.Address"
+                  ]
+                }
+              },
+              {
+                "Name": "RDS_CLUSTER_USERNAME",
+                "Value": "dbadmin"
+              },
+              {
+                "Name": "RDS_CLUSTER_PASSWORD",
+                "Value": "SimplePass123"
               }
             ],
             "LogConfiguration": {
@@ -312,7 +416,7 @@
     "VerificationTaskDefinition": {
       "Type": "AWS::ECS::TaskDefinition",
       "Properties": {
-        "Family": "kube-credential-ecs-verification",
+        "Family": "kube-credential-backend-verification",
         "NetworkMode": "awsvpc",
         "RequiresCompatibilities": [
           "FARGATE"
@@ -347,6 +451,31 @@
               {
                 "Name": "AWS_REGION",
                 "Value": "us-east-1"
+              },
+              {
+                "Name": "DB_NAME",
+                "Value": "kube_credentials"
+              },
+              {
+                "Name": "DB_PORT",
+                "Value": "5432"
+              },
+              {
+                "Name": "RDS_CLUSTER_HOST",
+                "Value": {
+                  "Fn::GetAtt": [
+                    "PostgreSQLDB",
+                    "Endpoint.Address"
+                  ]
+                }
+              },
+              {
+                "Name": "RDS_CLUSTER_USERNAME",
+                "Value": "dbadmin"
+              },
+              {
+                "Name": "RDS_CLUSTER_PASSWORD",
+                "Value": "SimplePass123"
               }
             ],
             "LogConfiguration": {
@@ -366,7 +495,7 @@
     "IssuanceService": {
       "Type": "AWS::ECS::Service",
       "Properties": {
-        "ServiceName": "kube-credential-ecs-issuance",
+        "ServiceName": "kube-credential-backend-issuance",
         "Cluster": {
           "Ref": "ECSCluster"
         },
@@ -398,7 +527,7 @@
     "VerificationService": {
       "Type": "AWS::ECS::Service",
       "Properties": {
-        "ServiceName": "kube-credential-ecs-verification",
+        "ServiceName": "kube-credential-backend-verification",
         "Cluster": {
           "Ref": "ECSCluster"
         },
@@ -434,7 +563,7 @@
         "Ref": "ServerlessDeploymentBucket"
       },
       "Export": {
-        "Name": "sls-kube-credential-ecs-dev-ServerlessDeploymentBucketName"
+        "Name": "sls-kube-credential-backend-dev-ServerlessDeploymentBucketName"
       }
     },
     "ECSCluster": {
@@ -448,6 +577,19 @@
       "Value": {
         "Ref": "VPC"
       }
+    },
+    "RDSEndpoint": {
+      "Description": "RDS PostgreSQL Endpoint",
+      "Value": {
+        "Fn::GetAtt": [
+          "PostgreSQLDB",
+          "Endpoint.Address"
+        ]
+      }
+    },
+    "DatabaseName": {
+      "Description": "Database Name",
+      "Value": "kube_credentials"
     },
     "IssuanceServiceName": {
       "Description": "Issuance ECS Service Name",

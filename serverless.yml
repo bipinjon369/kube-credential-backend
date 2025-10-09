@@ -1,4 +1,4 @@
-service: kube-credential-ecs
+service: kube-credential-backend
 
 provider:
   name: aws
@@ -13,6 +13,114 @@ custom:
 
 resources:
   Resources:
+    # ECR Repositories
+    IssuanceECRRepository:
+      Type: AWS::ECR::Repository
+      Properties:
+        RepositoryName: issuance-service
+        ImageScanningConfiguration:
+          ScanOnPush: true
+        LifecyclePolicy:
+          LifecyclePolicyText: |
+            {
+              "rules": [
+                {
+                  "rulePriority": 1,
+                  "selection": {
+                    "tagStatus": "untagged",
+                    "countType": "sinceImagePushed",
+                    "countUnit": "days",
+                    "countNumber": 7
+                  },
+                  "action": {
+                    "type": "expire"
+                  }
+                }
+              ]
+            }
+
+    VerificationECRRepository:
+      Type: AWS::ECR::Repository
+      Properties:
+        RepositoryName: verification-service
+        ImageScanningConfiguration:
+          ScanOnPush: true
+        LifecyclePolicy:
+          LifecyclePolicyText: |
+            {
+              "rules": [
+                {
+                  "rulePriority": 1,
+                  "selection": {
+                    "tagStatus": "untagged",
+                    "countType": "sinceImagePushed",
+                    "countUnit": "days",
+                    "countNumber": 7
+                  },
+                  "action": {
+                    "type": "expire"
+                  }
+                }
+              ]
+            }
+
+    # DB Parameter Group to allow non-SSL connections
+    DBParameterGroup:
+      Type: AWS::RDS::DBParameterGroup
+      Properties:
+        Description: Parameter group for PostgreSQL to allow non-SSL connections
+        Family: postgres15
+        Parameters:
+          rds.force_ssl: 0
+
+    # RDS PostgreSQL Instance
+    PostgreSQLDB:
+      Type: AWS::RDS::DBInstance
+      Properties:
+        DBInstanceIdentifier: ${self:service}-${self:custom.stage}-postgres
+        DBInstanceClass: db.t3.micro
+        Engine: postgres
+        EngineVersion: '15'
+        MasterUsername: dbadmin
+        MasterUserPassword: ${opt:db-password, 'SimplePass123'}
+        AllocatedStorage: 20
+        StorageType: gp2
+        DBName: kube_credentials
+        DBParameterGroupName: !Ref DBParameterGroup
+        VPCSecurityGroups:
+          - !Ref RDSSecurityGroup
+        DBSubnetGroupName: !Ref DBSubnetGroup
+        PubliclyAccessible: true
+        BackupRetentionPeriod: 7
+        MultiAZ: false
+        StorageEncrypted: true
+        DeletionProtection: false
+
+    # RDS Security Group
+    RDSSecurityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+        GroupDescription: Security group for RDS PostgreSQL
+        VpcId: !Ref VPC
+        SecurityGroupIngress:
+          - IpProtocol: tcp
+            FromPort: 5432
+            ToPort: 5432
+            SourceSecurityGroupId: !Ref ECSSecurityGroup
+          - IpProtocol: tcp
+            FromPort: 5432
+            ToPort: 5432
+            CidrIp: 0.0.0.0/0
+
+    # DB Subnet Group
+    DBSubnetGroup:
+      Type: AWS::RDS::DBSubnetGroup
+      Properties:
+        DBSubnetGroupDescription: Subnet group for RDS database
+        SubnetIds:
+          - !Ref PublicSubnet1
+          - !Ref PublicSubnet2
+
     # VPC and Networking
     VPC:
       Type: AWS::EC2::VPC
@@ -165,6 +273,16 @@ resources:
                 Value: "3000"
               - Name: AWS_REGION
                 Value: ${self:custom.region}
+              - Name: DB_NAME
+                Value: kube_credentials
+              - Name: DB_PORT
+                Value: "5432"
+              - Name: RDS_CLUSTER_HOST
+                Value: !GetAtt PostgreSQLDB.Endpoint.Address
+              - Name: RDS_CLUSTER_USERNAME
+                Value: dbadmin
+              - Name: RDS_CLUSTER_PASSWORD
+                Value: ${opt:db-password, 'SimplePass123'}
             LogConfiguration:
               LogDriver: awslogs
               Options:
@@ -197,6 +315,16 @@ resources:
                 Value: "3000"
               - Name: AWS_REGION
                 Value: ${self:custom.region}
+              - Name: DB_NAME
+                Value: kube_credentials
+              - Name: DB_PORT
+                Value: "5432"
+              - Name: RDS_CLUSTER_HOST
+                Value: !GetAtt PostgreSQLDB.Endpoint.Address
+              - Name: RDS_CLUSTER_USERNAME
+                Value: dbadmin
+              - Name: RDS_CLUSTER_PASSWORD
+                Value: ${opt:db-password, 'SimplePass123'}
             LogConfiguration:
               LogDriver: awslogs
               Options:
@@ -240,6 +368,14 @@ resources:
             AssignPublicIp: ENABLED
 
   Outputs:
+    IssuanceECRRepository:
+      Description: Issuance Service ECR Repository URI
+      Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/issuance-service"
+
+    VerificationECRRepository:
+      Description: Verification Service ECR Repository URI
+      Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/verification-service"
+
     ECSCluster:
       Description: ECS Cluster Name
       Value: !Ref ECSCluster
@@ -247,6 +383,14 @@ resources:
     VPCId:
       Description: VPC ID
       Value: !Ref VPC
+
+    RDSEndpoint:
+      Description: RDS PostgreSQL Endpoint
+      Value: !GetAtt PostgreSQLDB.Endpoint.Address
+
+    DatabaseName:
+      Description: Database Name
+      Value: kube_credentials
 
     IssuanceServiceName:
       Description: Issuance ECS Service Name

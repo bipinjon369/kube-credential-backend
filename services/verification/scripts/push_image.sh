@@ -8,11 +8,14 @@ SOURCE_FOLDER_ENTITIES="../../../shared/entities"
 load_env_file() {
   if [ -f "../.env" ]; then
     echo "📋 Found .env file, loading environment variables..."
-    # Export variables from .env file, ignoring comments and empty lines
     export $(grep -v '^#' ../.env | grep -v '^$' | xargs)
     echo "✅ Environment variables loaded from .env file"
+  elif [ -f "../../../.env" ]; then
+    echo "📋 Found root .env file, loading environment variables..."
+    export $(grep -v '^#' ../../../.env | grep -v '^$' | xargs)
+    echo "✅ Environment variables loaded from root .env file"
   else
-    echo "⚠️  No .env file found in service directory"
+    echo "⚠️  No .env file found in service or root directory"
   fi
 }
 
