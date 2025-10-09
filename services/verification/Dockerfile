@@ -1,42 +1,22 @@
-# Build stage
-FROM node:18-alpine AS builder
+FROM node:20-alpine
 
+# Set the working directory inside the container
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
-RUN npm ci --only=production
+
+# Install dependencies
+RUN npm install
 
 # Copy source code
-COPY src/ ./src/
-COPY tsconfig.json ./
+COPY . .
 
-# Build the application
+# Build TypeScript code
 RUN npm run build
-
-# Production stage
-FROM node:18-alpine AS production
-
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
-
-WORKDIR /app
-
-# Copy built application and dependencies
-COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
-COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=nodejs:nodejs /app/package*.json ./
-
-# Switch to non-root user
-USER nodejs
 
 # Expose port
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
-
 # Start the application
-CMD ["npm", "start"]
+CMD ["node", "dist/server.js"]

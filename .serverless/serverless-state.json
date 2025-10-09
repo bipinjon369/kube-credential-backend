@@ -1,0 +1,975 @@
+{
+  "service": {
+    "service": "kube-credential-ecs",
+    "serviceObject": {
+      "name": "kube-credential-ecs"
+    },
+    "provider": {
+      "name": "aws",
+      "runtime": "nodejs18.x",
+      "region": "us-east-1",
+      "stage": "dev",
+      "versionFunctions": true,
+      "compiledCloudFormationTemplate": {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Description": "The AWS CloudFormation template for this Serverless application",
+        "Resources": {
+          "ServerlessDeploymentBucket": {
+            "Type": "AWS::S3::Bucket",
+            "Properties": {
+              "BucketEncryption": {
+                "ServerSideEncryptionConfiguration": [
+                  {
+                    "ServerSideEncryptionByDefault": {
+                      "SSEAlgorithm": "AES256"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "ServerlessDeploymentBucketPolicy": {
+            "Type": "AWS::S3::BucketPolicy",
+            "Properties": {
+              "Bucket": {
+                "Ref": "ServerlessDeploymentBucket"
+              },
+              "PolicyDocument": {
+                "Statement": [
+                  {
+                    "Action": "s3:*",
+                    "Effect": "Deny",
+                    "Principal": "*",
+                    "Resource": [
+                      {
+                        "Fn::Join": [
+                          "",
+                          [
+                            "arn:",
+                            {
+                              "Ref": "AWS::Partition"
+                            },
+                            ":s3:::",
+                            {
+                              "Ref": "ServerlessDeploymentBucket"
+                            },
+                            "/*"
+                          ]
+                        ]
+                      },
+                      {
+                        "Fn::Join": [
+                          "",
+                          [
+                            "arn:",
+                            {
+                              "Ref": "AWS::Partition"
+                            },
+                            ":s3:::",
+                            {
+                              "Ref": "ServerlessDeploymentBucket"
+                            }
+                          ]
+                        ]
+                      }
+                    ],
+                    "Condition": {
+                      "Bool": {
+                        "aws:SecureTransport": false
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "VPC": {
+            "Type": "AWS::EC2::VPC",
+            "Properties": {
+              "CidrBlock": "10.0.0.0/16",
+              "EnableDnsHostnames": true,
+              "EnableDnsSupport": true,
+              "Tags": [
+                {
+                  "Key": "Name",
+                  "Value": "kube-credential-ecs-vpc"
+                }
+              ]
+            }
+          },
+          "PublicSubnet1": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+              "VpcId": {
+                "Ref": "VPC"
+              },
+              "CidrBlock": "10.0.1.0/24",
+              "AvailabilityZone": "us-east-1a",
+              "MapPublicIpOnLaunch": true
+            }
+          },
+          "PublicSubnet2": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+              "VpcId": {
+                "Ref": "VPC"
+              },
+              "CidrBlock": "10.0.2.0/24",
+              "AvailabilityZone": "us-east-1b",
+              "MapPublicIpOnLaunch": true
+            }
+          },
+          "InternetGateway": {
+            "Type": "AWS::EC2::InternetGateway"
+          },
+          "AttachGateway": {
+            "Type": "AWS::EC2::VPCGatewayAttachment",
+            "Properties": {
+              "VpcId": {
+                "Ref": "VPC"
+              },
+              "InternetGatewayId": {
+                "Ref": "InternetGateway"
+              }
+            }
+          },
+          "PublicRouteTable": {
+            "Type": "AWS::EC2::RouteTable",
+            "Properties": {
+              "VpcId": {
+                "Ref": "VPC"
+              }
+            }
+          },
+          "PublicRoute": {
+            "Type": "AWS::EC2::Route",
+            "DependsOn": [
+              "AttachGateway"
+            ],
+            "Properties": {
+              "RouteTableId": {
+                "Ref": "PublicRouteTable"
+              },
+              "DestinationCidrBlock": "0.0.0.0/0",
+              "GatewayId": {
+                "Ref": "InternetGateway"
+              }
+            }
+          },
+          "PublicSubnetRouteTableAssociation1": {
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "Properties": {
+              "SubnetId": {
+                "Ref": "PublicSubnet1"
+              },
+              "RouteTableId": {
+                "Ref": "PublicRouteTable"
+              }
+            }
+          },
+          "PublicSubnetRouteTableAssociation2": {
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "Properties": {
+              "SubnetId": {
+                "Ref": "PublicSubnet2"
+              },
+              "RouteTableId": {
+                "Ref": "PublicRouteTable"
+              }
+            }
+          },
+          "ECSSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+              "GroupDescription": "Security group for ECS services",
+              "VpcId": {
+                "Ref": "VPC"
+              },
+              "SecurityGroupIngress": [
+                {
+                  "IpProtocol": "tcp",
+                  "FromPort": 3000,
+                  "ToPort": 3000,
+                  "CidrIp": "0.0.0.0/0"
+                },
+                {
+                  "IpProtocol": "tcp",
+                  "FromPort": 80,
+                  "ToPort": 80,
+                  "CidrIp": "0.0.0.0/0"
+                }
+              ]
+            }
+          },
+          "ECSCluster": {
+            "Type": "AWS::ECS::Cluster",
+            "Properties": {
+              "ClusterName": "kube-credential-ecs-cluster",
+              "CapacityProviders": [
+                "FARGATE"
+              ],
+              "DefaultCapacityProviderStrategy": [
+                {
+                  "CapacityProvider": "FARGATE",
+                  "Weight": 1
+                }
+              ]
+            }
+          },
+          "ECSTaskExecutionRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+              "AssumeRolePolicyDocument": {
+                "Version": "2012-10-17",
+                "Statement": [
+                  {
+                    "Effect": "Allow",
+                    "Principal": {
+                      "Service": "ecs-tasks.amazonaws.com"
+                    },
+                    "Action": "sts:AssumeRole"
+                  }
+                ]
+              },
+              "ManagedPolicyArns": [
+                "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+              ]
+            }
+          },
+          "ECSTaskRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+              "AssumeRolePolicyDocument": {
+                "Version": "2012-10-17",
+                "Statement": [
+                  {
+                    "Effect": "Allow",
+                    "Principal": {
+                      "Service": "ecs-tasks.amazonaws.com"
+                    },
+                    "Action": "sts:AssumeRole"
+                  }
+                ]
+              }
+            }
+          },
+          "IssuanceLogGroup": {
+            "Type": "AWS::Logs::LogGroup",
+            "Properties": {
+              "LogGroupName": "/ecs/kube-credential-ecs-issuance",
+              "RetentionInDays": 7
+            }
+          },
+          "VerificationLogGroup": {
+            "Type": "AWS::Logs::LogGroup",
+            "Properties": {
+              "LogGroupName": "/ecs/kube-credential-ecs-verification",
+              "RetentionInDays": 7
+            }
+          },
+          "IssuanceTaskDefinition": {
+            "Type": "AWS::ECS::TaskDefinition",
+            "Properties": {
+              "Family": "kube-credential-ecs-issuance",
+              "NetworkMode": "awsvpc",
+              "RequiresCompatibilities": [
+                "FARGATE"
+              ],
+              "Cpu": 256,
+              "Memory": 512,
+              "ExecutionRoleArn": {
+                "Ref": "ECSTaskExecutionRole"
+              },
+              "TaskRoleArn": {
+                "Ref": "ECSTaskRole"
+              },
+              "ContainerDefinitions": [
+                {
+                  "Name": "issuance-service",
+                  "Image": "926726130819.dkr.ecr.us-east-1.amazonaws.com/issuance-service:latest",
+                  "PortMappings": [
+                    {
+                      "ContainerPort": 3000,
+                      "Protocol": "tcp"
+                    }
+                  ],
+                  "Environment": [
+                    {
+                      "Name": "NODE_ENV",
+                      "Value": "production"
+                    },
+                    {
+                      "Name": "PORT",
+                      "Value": "3000"
+                    },
+                    {
+                      "Name": "AWS_REGION",
+                      "Value": "us-east-1"
+                    }
+                  ],
+                  "LogConfiguration": {
+                    "LogDriver": "awslogs",
+                    "Options": {
+                      "awslogs-group": {
+                        "Ref": "IssuanceLogGroup"
+                      },
+                      "awslogs-region": "us-east-1",
+                      "awslogs-stream-prefix": "ecs"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "VerificationTaskDefinition": {
+            "Type": "AWS::ECS::TaskDefinition",
+            "Properties": {
+              "Family": "kube-credential-ecs-verification",
+              "NetworkMode": "awsvpc",
+              "RequiresCompatibilities": [
+                "FARGATE"
+              ],
+              "Cpu": 256,
+              "Memory": 512,
+              "ExecutionRoleArn": {
+                "Ref": "ECSTaskExecutionRole"
+              },
+              "TaskRoleArn": {
+                "Ref": "ECSTaskRole"
+              },
+              "ContainerDefinitions": [
+                {
+                  "Name": "verification-service",
+                  "Image": "926726130819.dkr.ecr.us-east-1.amazonaws.com/verification-service:latest",
+                  "PortMappings": [
+                    {
+                      "ContainerPort": 3000,
+                      "Protocol": "tcp"
+                    }
+                  ],
+                  "Environment": [
+                    {
+                      "Name": "NODE_ENV",
+                      "Value": "production"
+                    },
+                    {
+                      "Name": "PORT",
+                      "Value": "3000"
+                    },
+                    {
+                      "Name": "AWS_REGION",
+                      "Value": "us-east-1"
+                    }
+                  ],
+                  "LogConfiguration": {
+                    "LogDriver": "awslogs",
+                    "Options": {
+                      "awslogs-group": {
+                        "Ref": "VerificationLogGroup"
+                      },
+                      "awslogs-region": "us-east-1",
+                      "awslogs-stream-prefix": "ecs"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "IssuanceService": {
+            "Type": "AWS::ECS::Service",
+            "Properties": {
+              "ServiceName": "kube-credential-ecs-issuance",
+              "Cluster": {
+                "Ref": "ECSCluster"
+              },
+              "TaskDefinition": {
+                "Ref": "IssuanceTaskDefinition"
+              },
+              "LaunchType": "FARGATE",
+              "DesiredCount": 1,
+              "NetworkConfiguration": {
+                "AwsvpcConfiguration": {
+                  "SecurityGroups": [
+                    {
+                      "Ref": "ECSSecurityGroup"
+                    }
+                  ],
+                  "Subnets": [
+                    {
+                      "Ref": "PublicSubnet1"
+                    },
+                    {
+                      "Ref": "PublicSubnet2"
+                    }
+                  ],
+                  "AssignPublicIp": "ENABLED"
+                }
+              }
+            }
+          },
+          "VerificationService": {
+            "Type": "AWS::ECS::Service",
+            "Properties": {
+              "ServiceName": "kube-credential-ecs-verification",
+              "Cluster": {
+                "Ref": "ECSCluster"
+              },
+              "TaskDefinition": {
+                "Ref": "VerificationTaskDefinition"
+              },
+              "LaunchType": "FARGATE",
+              "DesiredCount": 1,
+              "NetworkConfiguration": {
+                "AwsvpcConfiguration": {
+                  "SecurityGroups": [
+                    {
+                      "Ref": "ECSSecurityGroup"
+                    }
+                  ],
+                  "Subnets": [
+                    {
+                      "Ref": "PublicSubnet1"
+                    },
+                    {
+                      "Ref": "PublicSubnet2"
+                    }
+                  ],
+                  "AssignPublicIp": "ENABLED"
+                }
+              }
+            }
+          }
+        },
+        "Outputs": {
+          "ServerlessDeploymentBucketName": {
+            "Value": {
+              "Ref": "ServerlessDeploymentBucket"
+            },
+            "Export": {
+              "Name": "sls-kube-credential-ecs-dev-ServerlessDeploymentBucketName"
+            }
+          },
+          "ECSCluster": {
+            "Description": "ECS Cluster Name",
+            "Value": {
+              "Ref": "ECSCluster"
+            }
+          },
+          "VPCId": {
+            "Description": "VPC ID",
+            "Value": {
+              "Ref": "VPC"
+            }
+          },
+          "IssuanceServiceName": {
+            "Description": "Issuance ECS Service Name",
+            "Value": {
+              "Ref": "IssuanceService"
+            }
+          },
+          "VerificationServiceName": {
+            "Description": "Verification ECS Service Name",
+            "Value": {
+              "Ref": "VerificationService"
+            }
+          }
+        }
+      },
+      "coreCloudFormationTemplate": {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Description": "The AWS CloudFormation template for this Serverless application",
+        "Resources": {
+          "ServerlessDeploymentBucket": {
+            "Type": "AWS::S3::Bucket",
+            "Properties": {
+              "BucketEncryption": {
+                "ServerSideEncryptionConfiguration": [
+                  {
+                    "ServerSideEncryptionByDefault": {
+                      "SSEAlgorithm": "AES256"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "ServerlessDeploymentBucketPolicy": {
+            "Type": "AWS::S3::BucketPolicy",
+            "Properties": {
+              "Bucket": {
+                "Ref": "ServerlessDeploymentBucket"
+              },
+              "PolicyDocument": {
+                "Statement": [
+                  {
+                    "Action": "s3:*",
+                    "Effect": "Deny",
+                    "Principal": "*",
+                    "Resource": [
+                      {
+                        "Fn::Join": [
+                          "",
+                          [
+                            "arn:",
+                            {
+                              "Ref": "AWS::Partition"
+                            },
+                            ":s3:::",
+                            {
+                              "Ref": "ServerlessDeploymentBucket"
+                            },
+                            "/*"
+                          ]
+                        ]
+                      },
+                      {
+                        "Fn::Join": [
+                          "",
+                          [
+                            "arn:",
+                            {
+                              "Ref": "AWS::Partition"
+                            },
+                            ":s3:::",
+                            {
+                              "Ref": "ServerlessDeploymentBucket"
+                            }
+                          ]
+                        ]
+                      }
+                    ],
+                    "Condition": {
+                      "Bool": {
+                        "aws:SecureTransport": false
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "Outputs": {
+          "ServerlessDeploymentBucketName": {
+            "Value": {
+              "Ref": "ServerlessDeploymentBucket"
+            }
+          }
+        }
+      }
+    },
+    "custom": {
+      "accountId": "926726130819",
+      "region": "us-east-1",
+      "stage": "dev"
+    },
+    "pluginsData": {},
+    "functions": {},
+    "resources": {
+      "Resources": {
+        "VPC": {
+          "Type": "AWS::EC2::VPC",
+          "Properties": {
+            "CidrBlock": "10.0.0.0/16",
+            "EnableDnsHostnames": true,
+            "EnableDnsSupport": true,
+            "Tags": [
+              {
+                "Key": "Name",
+                "Value": "kube-credential-ecs-vpc"
+              }
+            ]
+          }
+        },
+        "PublicSubnet1": {
+          "Type": "AWS::EC2::Subnet",
+          "Properties": {
+            "VpcId": {
+              "Ref": "VPC"
+            },
+            "CidrBlock": "10.0.1.0/24",
+            "AvailabilityZone": "us-east-1a",
+            "MapPublicIpOnLaunch": true
+          }
+        },
+        "PublicSubnet2": {
+          "Type": "AWS::EC2::Subnet",
+          "Properties": {
+            "VpcId": {
+              "Ref": "VPC"
+            },
+            "CidrBlock": "10.0.2.0/24",
+            "AvailabilityZone": "us-east-1b",
+            "MapPublicIpOnLaunch": true
+          }
+        },
+        "InternetGateway": {
+          "Type": "AWS::EC2::InternetGateway"
+        },
+        "AttachGateway": {
+          "Type": "AWS::EC2::VPCGatewayAttachment",
+          "Properties": {
+            "VpcId": {
+              "Ref": "VPC"
+            },
+            "InternetGatewayId": {
+              "Ref": "InternetGateway"
+            }
+          }
+        },
+        "PublicRouteTable": {
+          "Type": "AWS::EC2::RouteTable",
+          "Properties": {
+            "VpcId": {
+              "Ref": "VPC"
+            }
+          }
+        },
+        "PublicRoute": {
+          "Type": "AWS::EC2::Route",
+          "DependsOn": [
+            "AttachGateway"
+          ],
+          "Properties": {
+            "RouteTableId": {
+              "Ref": "PublicRouteTable"
+            },
+            "DestinationCidrBlock": "0.0.0.0/0",
+            "GatewayId": {
+              "Ref": "InternetGateway"
+            }
+          }
+        },
+        "PublicSubnetRouteTableAssociation1": {
+          "Type": "AWS::EC2::SubnetRouteTableAssociation",
+          "Properties": {
+            "SubnetId": {
+              "Ref": "PublicSubnet1"
+            },
+            "RouteTableId": {
+              "Ref": "PublicRouteTable"
+            }
+          }
+        },
+        "PublicSubnetRouteTableAssociation2": {
+          "Type": "AWS::EC2::SubnetRouteTableAssociation",
+          "Properties": {
+            "SubnetId": {
+              "Ref": "PublicSubnet2"
+            },
+            "RouteTableId": {
+              "Ref": "PublicRouteTable"
+            }
+          }
+        },
+        "ECSSecurityGroup": {
+          "Type": "AWS::EC2::SecurityGroup",
+          "Properties": {
+            "GroupDescription": "Security group for ECS services",
+            "VpcId": {
+              "Ref": "VPC"
+            },
+            "SecurityGroupIngress": [
+              {
+                "IpProtocol": "tcp",
+                "FromPort": 3000,
+                "ToPort": 3000,
+                "CidrIp": "0.0.0.0/0"
+              },
+              {
+                "IpProtocol": "tcp",
+                "FromPort": 80,
+                "ToPort": 80,
+                "CidrIp": "0.0.0.0/0"
+              }
+            ]
+          }
+        },
+        "ECSCluster": {
+          "Type": "AWS::ECS::Cluster",
+          "Properties": {
+            "ClusterName": "kube-credential-ecs-cluster",
+            "CapacityProviders": [
+              "FARGATE"
+            ],
+            "DefaultCapacityProviderStrategy": [
+              {
+                "CapacityProvider": "FARGATE",
+                "Weight": 1
+              }
+            ]
+          }
+        },
+        "ECSTaskExecutionRole": {
+          "Type": "AWS::IAM::Role",
+          "Properties": {
+            "AssumeRolePolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Service": "ecs-tasks.amazonaws.com"
+                  },
+                  "Action": "sts:AssumeRole"
+                }
+              ]
+            },
+            "ManagedPolicyArns": [
+              "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+            ]
+          }
+        },
+        "ECSTaskRole": {
+          "Type": "AWS::IAM::Role",
+          "Properties": {
+            "AssumeRolePolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Service": "ecs-tasks.amazonaws.com"
+                  },
+                  "Action": "sts:AssumeRole"
+                }
+              ]
+            }
+          }
+        },
+        "IssuanceLogGroup": {
+          "Type": "AWS::Logs::LogGroup",
+          "Properties": {
+            "LogGroupName": "/ecs/kube-credential-ecs-issuance",
+            "RetentionInDays": 7
+          }
+        },
+        "VerificationLogGroup": {
+          "Type": "AWS::Logs::LogGroup",
+          "Properties": {
+            "LogGroupName": "/ecs/kube-credential-ecs-verification",
+            "RetentionInDays": 7
+          }
+        },
+        "IssuanceTaskDefinition": {
+          "Type": "AWS::ECS::TaskDefinition",
+          "Properties": {
+            "Family": "kube-credential-ecs-issuance",
+            "NetworkMode": "awsvpc",
+            "RequiresCompatibilities": [
+              "FARGATE"
+            ],
+            "Cpu": 256,
+            "Memory": 512,
+            "ExecutionRoleArn": {
+              "Ref": "ECSTaskExecutionRole"
+            },
+            "TaskRoleArn": {
+              "Ref": "ECSTaskRole"
+            },
+            "ContainerDefinitions": [
+              {
+                "Name": "issuance-service",
+                "Image": "926726130819.dkr.ecr.us-east-1.amazonaws.com/issuance-service:latest",
+                "PortMappings": [
+                  {
+                    "ContainerPort": 3000,
+                    "Protocol": "tcp"
+                  }
+                ],
+                "Environment": [
+                  {
+                    "Name": "NODE_ENV",
+                    "Value": "production"
+                  },
+                  {
+                    "Name": "PORT",
+                    "Value": "3000"
+                  },
+                  {
+                    "Name": "AWS_REGION",
+                    "Value": "us-east-1"
+                  }
+                ],
+                "LogConfiguration": {
+                  "LogDriver": "awslogs",
+                  "Options": {
+                    "awslogs-group": {
+                      "Ref": "IssuanceLogGroup"
+                    },
+                    "awslogs-region": "us-east-1",
+                    "awslogs-stream-prefix": "ecs"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "VerificationTaskDefinition": {
+          "Type": "AWS::ECS::TaskDefinition",
+          "Properties": {
+            "Family": "kube-credential-ecs-verification",
+            "NetworkMode": "awsvpc",
+            "RequiresCompatibilities": [
+              "FARGATE"
+            ],
+            "Cpu": 256,
+            "Memory": 512,
+            "ExecutionRoleArn": {
+              "Ref": "ECSTaskExecutionRole"
+            },
+            "TaskRoleArn": {
+              "Ref": "ECSTaskRole"
+            },
+            "ContainerDefinitions": [
+              {
+                "Name": "verification-service",
+                "Image": "926726130819.dkr.ecr.us-east-1.amazonaws.com/verification-service:latest",
+                "PortMappings": [
+                  {
+                    "ContainerPort": 3000,
+                    "Protocol": "tcp"
+                  }
+                ],
+                "Environment": [
+                  {
+                    "Name": "NODE_ENV",
+                    "Value": "production"
+                  },
+                  {
+                    "Name": "PORT",
+                    "Value": "3000"
+                  },
+                  {
+                    "Name": "AWS_REGION",
+                    "Value": "us-east-1"
+                  }
+                ],
+                "LogConfiguration": {
+                  "LogDriver": "awslogs",
+                  "Options": {
+                    "awslogs-group": {
+                      "Ref": "VerificationLogGroup"
+                    },
+                    "awslogs-region": "us-east-1",
+                    "awslogs-stream-prefix": "ecs"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "IssuanceService": {
+          "Type": "AWS::ECS::Service",
+          "Properties": {
+            "ServiceName": "kube-credential-ecs-issuance",
+            "Cluster": {
+              "Ref": "ECSCluster"
+            },
+            "TaskDefinition": {
+              "Ref": "IssuanceTaskDefinition"
+            },
+            "LaunchType": "FARGATE",
+            "DesiredCount": 1,
+            "NetworkConfiguration": {
+              "AwsvpcConfiguration": {
+                "SecurityGroups": [
+                  {
+                    "Ref": "ECSSecurityGroup"
+                  }
+                ],
+                "Subnets": [
+                  {
+                    "Ref": "PublicSubnet1"
+                  },
+                  {
+                    "Ref": "PublicSubnet2"
+                  }
+                ],
+                "AssignPublicIp": "ENABLED"
+              }
+            }
+          }
+        },
+        "VerificationService": {
+          "Type": "AWS::ECS::Service",
+          "Properties": {
+            "ServiceName": "kube-credential-ecs-verification",
+            "Cluster": {
+              "Ref": "ECSCluster"
+            },
+            "TaskDefinition": {
+              "Ref": "VerificationTaskDefinition"
+            },
+            "LaunchType": "FARGATE",
+            "DesiredCount": 1,
+            "NetworkConfiguration": {
+              "AwsvpcConfiguration": {
+                "SecurityGroups": [
+                  {
+                    "Ref": "ECSSecurityGroup"
+                  }
+                ],
+                "Subnets": [
+                  {
+                    "Ref": "PublicSubnet1"
+                  },
+                  {
+                    "Ref": "PublicSubnet2"
+                  }
+                ],
+                "AssignPublicIp": "ENABLED"
+              }
+            }
+          }
+        }
+      },
+      "Outputs": {
+        "ECSCluster": {
+          "Description": "ECS Cluster Name",
+          "Value": {
+            "Ref": "ECSCluster"
+          }
+        },
+        "VPCId": {
+          "Description": "VPC ID",
+          "Value": {
+            "Ref": "VPC"
+          }
+        },
+        "IssuanceServiceName": {
+          "Description": "Issuance ECS Service Name",
+          "Value": {
+            "Ref": "IssuanceService"
+          }
+        },
+        "VerificationServiceName": {
+          "Description": "Verification ECS Service Name",
+          "Value": {
+            "Ref": "VerificationService"
+          }
+        }
+      }
+    },
+    "configValidationMode": "warn",
+    "serviceFilename": "serverless-ecs.yml",
+    "initialServerlessConfig": {
+      "service": "kube-credential-ecs",
+      "provider": {
+        "$ref": "$[\"service\"][\"provider\"]"
+      },
+      "custom": {
+        "$ref": "$[\"service\"][\"custom\"]"
+      },
+      "resources": {
+        "$ref": "$[\"service\"][\"resources\"]"
+      }
+    },
+    "layers": {},
+    "isDashboardMonitoringPreconfigured": false
+  },
+  "package": {
+    "artifactDirectoryName": "serverless/kube-credential-ecs/dev/1760035670726-2025-10-09T18:47:50.726Z",
+    "artifact": ""
+  }
+}
