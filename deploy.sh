@@ -44,13 +44,15 @@ if [ -z "$DB_PASSWORD" ]; then
   echo -e "${YELLOW}Generated DB password: $DB_PASSWORD${NC}"
 fi
 
-# Note: ECR repositories are now included in main serverless.yml
+# Step 1: Deploy ECR repositories first
+echo -e "${GREEN}📦 Step 1: Deploying ECR repositories...${NC}"
+serverless deploy --config serverless-ecr.yml --stage $STAGE --region $REGION
 
 # Get account ID
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
-# Build and push images
-echo -e "${GREEN}🐳 Building and pushing Docker images...${NC}"
+# Step 2: Build and push images to ECR
+echo -e "${GREEN}🐳 Step 2: Building and pushing Docker images...${NC}"
 cd services/issuance/scripts
 export AWS_REGION=$REGION
 export AWS_ACCOUNT_ID=$ACCOUNT_ID
@@ -59,8 +61,8 @@ cd ../../verification/scripts
 ./push_image.sh
 cd ../../..
 
-# Deploy main infrastructure with RDS and ECS
-echo -e "${GREEN}🏗️ Deploying infrastructure...${NC}"
+# Step 3: Deploy main infrastructure (RDS, ECS, etc.)
+echo -e "${GREEN}🏗️ Step 3: Deploying main infrastructure...${NC}"
 serverless deploy --stage $STAGE --region $REGION --param="db-password=$DB_PASSWORD"
 
 # Get RDS endpoint

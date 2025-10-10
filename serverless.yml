@@ -13,57 +13,6 @@ custom:
 
 resources:
   Resources:
-    # ECR Repositories
-    IssuanceECRRepository:
-      Type: AWS::ECR::Repository
-      Properties:
-        RepositoryName: issuance-service
-        ImageScanningConfiguration:
-          ScanOnPush: true
-        LifecyclePolicy:
-          LifecyclePolicyText: |
-            {
-              "rules": [
-                {
-                  "rulePriority": 1,
-                  "selection": {
-                    "tagStatus": "untagged",
-                    "countType": "sinceImagePushed",
-                    "countUnit": "days",
-                    "countNumber": 7
-                  },
-                  "action": {
-                    "type": "expire"
-                  }
-                }
-              ]
-            }
-
-    VerificationECRRepository:
-      Type: AWS::ECR::Repository
-      Properties:
-        RepositoryName: verification-service
-        ImageScanningConfiguration:
-          ScanOnPush: true
-        LifecyclePolicy:
-          LifecyclePolicyText: |
-            {
-              "rules": [
-                {
-                  "rulePriority": 1,
-                  "selection": {
-                    "tagStatus": "untagged",
-                    "countType": "sinceImagePushed",
-                    "countUnit": "days",
-                    "countNumber": 7
-                  },
-                  "action": {
-                    "type": "expire"
-                  }
-                }
-              ]
-            }
-
     # DB Parameter Group to allow non-SSL connections
     DBParameterGroup:
       Type: AWS::RDS::DBParameterGroup
@@ -183,6 +132,21 @@ resources:
         RouteTableId: !Ref PublicRouteTable
 
     # Security Groups
+    ALBSecurityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+        GroupDescription: Security group for Application Load Balancer
+        VpcId: !Ref VPC
+        SecurityGroupIngress:
+          - IpProtocol: tcp
+            FromPort: 80
+            ToPort: 80
+            CidrIp: 0.0.0.0/0
+          - IpProtocol: tcp
+            FromPort: 443
+            ToPort: 443
+            CidrIp: 0.0.0.0/0
+
     ECSSecurityGroup:
       Type: AWS::EC2::SecurityGroup
       Properties:
@@ -192,11 +156,91 @@ resources:
           - IpProtocol: tcp
             FromPort: 3000
             ToPort: 3000
-            CidrIp: 0.0.0.0/0
-          - IpProtocol: tcp
-            FromPort: 80
-            ToPort: 80
-            CidrIp: 0.0.0.0/0
+            SourceSecurityGroupId: !Ref ALBSecurityGroup
+
+    # Application Load Balancer
+    ApplicationLoadBalancer:
+      Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+      Properties:
+        Name: ${self:service}-alb
+        Scheme: internet-facing
+        Type: application
+        SecurityGroups:
+          - !Ref ALBSecurityGroup
+        Subnets:
+          - !Ref PublicSubnet1
+          - !Ref PublicSubnet2
+
+    # Target Groups
+    IssuanceTargetGroup:
+      Type: AWS::ElasticLoadBalancingV2::TargetGroup
+      Properties:
+        Name: ${self:service}-issuance-tg
+        Port: 3000
+        Protocol: HTTP
+        VpcId: !Ref VPC
+        TargetType: ip
+        HealthCheckPath: /health
+        HealthCheckProtocol: HTTP
+        HealthCheckIntervalSeconds: 30
+        HealthyThresholdCount: 2
+        UnhealthyThresholdCount: 3
+
+    VerificationTargetGroup:
+      Type: AWS::ElasticLoadBalancingV2::TargetGroup
+      Properties:
+        Name: ${self:service}-verification-tg
+        Port: 3000
+        Protocol: HTTP
+        VpcId: !Ref VPC
+        TargetType: ip
+        HealthCheckPath: /health
+        HealthCheckProtocol: HTTP
+        HealthCheckIntervalSeconds: 30
+        HealthyThresholdCount: 2
+        UnhealthyThresholdCount: 3
+
+    # ALB Listener
+    ALBListener:
+      Type: AWS::ElasticLoadBalancingV2::Listener
+      Properties:
+        DefaultActions:
+          - Type: fixed-response
+            FixedResponseConfig:
+              StatusCode: 404
+              ContentType: text/plain
+              MessageBody: Not Found
+        LoadBalancerArn: !Ref ApplicationLoadBalancer
+        Port: 80
+        Protocol: HTTP
+
+    # Listener Rules
+    IssuanceListenerRule:
+      Type: AWS::ElasticLoadBalancingV2::ListenerRule
+      Properties:
+        Actions:
+          - Type: forward
+            TargetGroupArn: !Ref IssuanceTargetGroup
+        Conditions:
+          - Field: path-pattern
+            Values:
+              - /issuance/*
+              - /health
+        ListenerArn: !Ref ALBListener
+        Priority: 1
+
+    VerificationListenerRule:
+      Type: AWS::ElasticLoadBalancingV2::ListenerRule
+      Properties:
+        Actions:
+          - Type: forward
+            TargetGroupArn: !Ref VerificationTargetGroup
+        Conditions:
+          - Field: path-pattern
+            Values:
+              - /verification/*
+        ListenerArn: !Ref ALBListener
+        Priority: 2
 
     # ECS Cluster
     ECSCluster:
@@ -335,12 +379,17 @@ resources:
     # ECS Services
     IssuanceService:
       Type: AWS::ECS::Service
+      DependsOn: IssuanceListenerRule
       Properties:
         ServiceName: ${self:service}-issuance
         Cluster: !Ref ECSCluster
         TaskDefinition: !Ref IssuanceTaskDefinition
         LaunchType: FARGATE
         DesiredCount: 1
+        LoadBalancers:
+          - ContainerName: issuance-service
+            ContainerPort: 3000
+            TargetGroupArn: !Ref IssuanceTargetGroup
         NetworkConfiguration:
           AwsvpcConfiguration:
             SecurityGroups:
@@ -352,12 +401,17 @@ resources:
 
     VerificationService:
       Type: AWS::ECS::Service
+      DependsOn: VerificationListenerRule
       Properties:
         ServiceName: ${self:service}-verification
         Cluster: !Ref ECSCluster
         TaskDefinition: !Ref VerificationTaskDefinition
         LaunchType: FARGATE
         DesiredCount: 1
+        LoadBalancers:
+          - ContainerName: verification-service
+            ContainerPort: 3000
+            TargetGroupArn: !Ref VerificationTargetGroup
         NetworkConfiguration:
           AwsvpcConfiguration:
             SecurityGroups:
@@ -368,6 +422,10 @@ resources:
             AssignPublicIp: ENABLED
 
   Outputs:
+    LoadBalancerDNS:
+      Description: Application Load Balancer DNS Name
+      Value: !GetAtt ApplicationLoadBalancer.DNSName
+
     IssuanceECRRepository:
       Description: Issuance Service ECR Repository URI
       Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/issuance-service"

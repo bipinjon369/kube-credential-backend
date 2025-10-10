@@ -566,6 +566,18 @@
         "Name": "sls-kube-credential-backend-dev-ServerlessDeploymentBucketName"
       }
     },
+    "IssuanceECRRepository": {
+      "Description": "Issuance Service ECR Repository URI",
+      "Value": {
+        "Fn::Sub": "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/issuance-service"
+      }
+    },
+    "VerificationECRRepository": {
+      "Description": "Verification Service ECR Repository URI",
+      "Value": {
+        "Fn::Sub": "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/verification-service"
+      }
+    },
     "ECSCluster": {
       "Description": "ECS Cluster Name",
       "Value": {

@@ -1,0 +1,60 @@
+service: kube-credential-ecr
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: ${opt:region, 'us-east-1'}
+  stage: ${opt:stage, 'dev'}
+
+resources:
+  Resources:
+    # ECR Repositories
+    IssuanceECRRepository:
+      Type: AWS::ECR::Repository
+      Properties:
+        RepositoryName: issuance-service
+        ImageScanningConfiguration:
+          ScanOnPush: true
+        LifecyclePolicy:
+          LifecyclePolicyText: |
+            {
+              "rules": [
+                {
+                  "rulePriority": 1,
+                  "selection": {
+                    "tagStatus": "untagged",
+                    "countType": "sinceImagePushed",
+                    "countUnit": "days",
+                    "countNumber": 7
+                  },
+                  "action": {
+                    "type": "expire"
+                  }
+                }
+              ]
+            }
+
+    VerificationECRRepository:
+      Type: AWS::ECR::Repository
+      Properties:
+        RepositoryName: verification-service
+        ImageScanningConfiguration:
+          ScanOnPush: true
+        LifecyclePolicy:
+          LifecyclePolicyText: |
+            {
+              "rules": [
+                {
+                  "rulePriority": 1,
+                  "selection": {
+                    "tagStatus": "untagged",
+                    "countType": "sinceImagePushed",
+                    "countUnit": "days",
+                    "countNumber": 7
+                  },
+                  "action": {
+                    "type": "expire"
+                  }
+                }
+              ]
+            }

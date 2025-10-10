@@ -578,6 +578,18 @@
               "Name": "sls-kube-credential-backend-dev-ServerlessDeploymentBucketName"
             }
           },
+          "IssuanceECRRepository": {
+            "Description": "Issuance Service ECR Repository URI",
+            "Value": {
+              "Fn::Sub": "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/issuance-service"
+            }
+          },
+          "VerificationECRRepository": {
+            "Description": "Verification Service ECR Repository URI",
+            "Value": {
+              "Fn::Sub": "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/verification-service"
+            }
+          },
           "ECSCluster": {
             "Description": "ECS Cluster Name",
             "Value": {
@@ -1196,6 +1208,18 @@
         }
       },
       "Outputs": {
+        "IssuanceECRRepository": {
+          "Description": "Issuance Service ECR Repository URI",
+          "Value": {
+            "Fn::Sub": "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/issuance-service"
+          }
+        },
+        "VerificationECRRepository": {
+          "Description": "Verification Service ECR Repository URI",
+          "Value": {
+            "Fn::Sub": "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/verification-service"
+          }
+        },
         "ECSCluster": {
           "Description": "ECS Cluster Name",
           "Value": {
@@ -1253,7 +1277,7 @@
     "isDashboardMonitoringPreconfigured": false
   },
   "package": {
-    "artifactDirectoryName": "serverless/kube-credential-backend/dev/1760041431758-2025-10-09T20:23:51.758Z",
+    "artifactDirectoryName": "serverless/kube-credential-backend/dev/1760096611535-2025-10-10T11:43:31.535Z",
     "artifact": ""
   }
 }
