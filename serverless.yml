@@ -175,7 +175,7 @@ resources:
     IssuanceTargetGroup:
       Type: AWS::ElasticLoadBalancingV2::TargetGroup
       Properties:
-        Name: ${self:service}-issuance-tg
+        Name: ${self:service}-is-tg
         Port: 3000
         Protocol: HTTP
         VpcId: !Ref VPC
@@ -189,7 +189,7 @@ resources:
     VerificationTargetGroup:
       Type: AWS::ElasticLoadBalancingV2::TargetGroup
       Properties:
-        Name: ${self:service}-verification-tg
+        Name: ${self:service}-verif-tg
         Port: 3000
         Protocol: HTTP
         VpcId: !Ref VPC

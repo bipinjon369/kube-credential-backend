@@ -245,6 +245,29 @@
         }
       }
     },
+    "ALBSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Security group for Application Load Balancer",
+        "VpcId": {
+          "Ref": "VPC"
+        },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 80,
+            "ToPort": 80,
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 443,
+            "ToPort": 443,
+            "CidrIp": "0.0.0.0/0"
+          }
+        ]
+      }
+    },
     "ECSSecurityGroup": {
       "Type": "AWS::EC2::SecurityGroup",
       "Properties": {
@@ -257,15 +280,137 @@
             "IpProtocol": "tcp",
             "FromPort": 3000,
             "ToPort": 3000,
-            "CidrIp": "0.0.0.0/0"
-          },
-          {
-            "IpProtocol": "tcp",
-            "FromPort": 80,
-            "ToPort": 80,
-            "CidrIp": "0.0.0.0/0"
+            "SourceSecurityGroupId": {
+              "Ref": "ALBSecurityGroup"
+            }
           }
         ]
+      }
+    },
+    "ApplicationLoadBalancer": {
+      "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "Properties": {
+        "Name": "kube-credential-backend-alb",
+        "Scheme": "internet-facing",
+        "Type": "application",
+        "SecurityGroups": [
+          {
+            "Ref": "ALBSecurityGroup"
+          }
+        ],
+        "Subnets": [
+          {
+            "Ref": "PublicSubnet1"
+          },
+          {
+            "Ref": "PublicSubnet2"
+          }
+        ]
+      }
+    },
+    "IssuanceTargetGroup": {
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties": {
+        "Name": "kube-credential-backend-is-tg",
+        "Port": 3000,
+        "Protocol": "HTTP",
+        "VpcId": {
+          "Ref": "VPC"
+        },
+        "TargetType": "ip",
+        "HealthCheckPath": "/health",
+        "HealthCheckProtocol": "HTTP",
+        "HealthCheckIntervalSeconds": 30,
+        "HealthyThresholdCount": 2,
+        "UnhealthyThresholdCount": 3
+      }
+    },
+    "VerificationTargetGroup": {
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties": {
+        "Name": "kube-credential-backend-verif-tg",
+        "Port": 3000,
+        "Protocol": "HTTP",
+        "VpcId": {
+          "Ref": "VPC"
+        },
+        "TargetType": "ip",
+        "HealthCheckPath": "/health",
+        "HealthCheckProtocol": "HTTP",
+        "HealthCheckIntervalSeconds": 30,
+        "HealthyThresholdCount": 2,
+        "UnhealthyThresholdCount": 3
+      }
+    },
+    "ALBListener": {
+      "Type": "AWS::ElasticLoadBalancingV2::Listener",
+      "Properties": {
+        "DefaultActions": [
+          {
+            "Type": "fixed-response",
+            "FixedResponseConfig": {
+              "StatusCode": 404,
+              "ContentType": "text/plain",
+              "MessageBody": "Not Found"
+            }
+          }
+        ],
+        "LoadBalancerArn": {
+          "Ref": "ApplicationLoadBalancer"
+        },
+        "Port": 80,
+        "Protocol": "HTTP"
+      }
+    },
+    "IssuanceListenerRule": {
+      "Type": "AWS::ElasticLoadBalancingV2::ListenerRule",
+      "Properties": {
+        "Actions": [
+          {
+            "Type": "forward",
+            "TargetGroupArn": {
+              "Ref": "IssuanceTargetGroup"
+            }
+          }
+        ],
+        "Conditions": [
+          {
+            "Field": "path-pattern",
+            "Values": [
+              "/issuance/*",
+              "/health"
+            ]
+          }
+        ],
+        "ListenerArn": {
+          "Ref": "ALBListener"
+        },
+        "Priority": 1
+      }
+    },
+    "VerificationListenerRule": {
+      "Type": "AWS::ElasticLoadBalancingV2::ListenerRule",
+      "Properties": {
+        "Actions": [
+          {
+            "Type": "forward",
+            "TargetGroupArn": {
+              "Ref": "VerificationTargetGroup"
+            }
+          }
+        ],
+        "Conditions": [
+          {
+            "Field": "path-pattern",
+            "Values": [
+              "/verification/*"
+            ]
+          }
+        ],
+        "ListenerArn": {
+          "Ref": "ALBListener"
+        },
+        "Priority": 2
       }
     },
     "ECSCluster": {
@@ -494,6 +639,9 @@
     },
     "IssuanceService": {
       "Type": "AWS::ECS::Service",
+      "DependsOn": [
+        "IssuanceListenerRule"
+      ],
       "Properties": {
         "ServiceName": "kube-credential-backend-issuance",
         "Cluster": {
@@ -504,6 +652,15 @@
         },
         "LaunchType": "FARGATE",
         "DesiredCount": 1,
+        "LoadBalancers": [
+          {
+            "ContainerName": "issuance-service",
+            "ContainerPort": 3000,
+            "TargetGroupArn": {
+              "Ref": "IssuanceTargetGroup"
+            }
+          }
+        ],
         "NetworkConfiguration": {
           "AwsvpcConfiguration": {
             "SecurityGroups": [
@@ -526,6 +683,9 @@
     },
     "VerificationService": {
       "Type": "AWS::ECS::Service",
+      "DependsOn": [
+        "VerificationListenerRule"
+      ],
       "Properties": {
         "ServiceName": "kube-credential-backend-verification",
         "Cluster": {
@@ -536,6 +696,15 @@
         },
         "LaunchType": "FARGATE",
         "DesiredCount": 1,
+        "LoadBalancers": [
+          {
+            "ContainerName": "verification-service",
+            "ContainerPort": 3000,
+            "TargetGroupArn": {
+              "Ref": "VerificationTargetGroup"
+            }
+          }
+        ],
         "NetworkConfiguration": {
           "AwsvpcConfiguration": {
             "SecurityGroups": [
@@ -564,6 +733,15 @@
       },
       "Export": {
         "Name": "sls-kube-credential-backend-dev-ServerlessDeploymentBucketName"
+      }
+    },
+    "LoadBalancerDNS": {
+      "Description": "Application Load Balancer DNS Name",
+      "Value": {
+        "Fn::GetAtt": [
+          "ApplicationLoadBalancer",
+          "DNSName"
+        ]
       }
     },
     "IssuanceECRRepository": {

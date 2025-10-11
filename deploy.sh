@@ -48,14 +48,10 @@ fi
 echo -e "${GREEN}📦 Step 1: Deploying ECR repositories...${NC}"
 serverless deploy --config serverless-ecr.yml --stage $STAGE --region $REGION
 
-# Get account ID
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-
 # Step 2: Build and push images to ECR
 echo -e "${GREEN}🐳 Step 2: Building and pushing Docker images...${NC}"
 cd services/issuance/scripts
 export AWS_REGION=$REGION
-export AWS_ACCOUNT_ID=$ACCOUNT_ID
 ./push_image.sh
 cd ../../verification/scripts
 ./push_image.sh

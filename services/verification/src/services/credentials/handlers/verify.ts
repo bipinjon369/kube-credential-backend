@@ -7,8 +7,8 @@ const logger = createEndpointLogger('/verification/credentials', 'POST');
 
 const verifyCredentialSchema = z.object({
   id: z.string().uuid('Valid UUID is required'),
-  name: z.string().min(1, 'Name is required'),
-  email: z.string().email('Valid email is required')
+  name: z.string().min(1, 'Name cannot be empty').optional(),
+  email: z.string().email('Valid email is required').optional()
 });
 
 export const verifyCredential = async (req: Request, res: Response) => {
@@ -48,9 +48,17 @@ export const verifyCredential = async (req: Request, res: Response) => {
       });
     }
 
-    // Optionally verify name/email match
-    if (credential.name !== name || credential.email !== email) {
-      logger.info('Credential details mismatch', { requestId, workerID, credentialId: id });
+    // Cross-verify name and email if provided
+    const mismatchFields = [];
+    if (name && credential.name !== name) {
+      mismatchFields.push('name');
+    }
+    if (email && credential.email !== email) {
+      mismatchFields.push('email');
+    }
+
+    if (mismatchFields.length > 0) {
+      logger.info('Credential details mismatch', { requestId, workerID, credentialId: id, mismatchFields });
       return res.status(404).json({
         valid: false,
         message: 'Credential not found or invalid',
